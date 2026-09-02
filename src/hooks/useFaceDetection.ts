@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { loadModels, detectFaces } from '@/lib/vision/faceDetection';
 import { descriptorToArray, cropFace } from '@/lib/vision/embeddings';
 import { matchVisitorFace } from '@/lib/supabase/services';
 import type { DetectedFace, MatchedVisitorInfo } from '@/types/kiosk';
@@ -26,6 +25,7 @@ export function useFaceDetection(): UseFaceDetectionReturn {
 
     async function initModels() {
       try {
+        const { loadModels } = await import('@/lib/vision/faceDetection');
         await loadModels();
         if (isMounted) {
           setIsModelsLoaded(true);
@@ -54,6 +54,7 @@ export function useFaceDetection(): UseFaceDetectionReturn {
       setError(null);
 
       try {
+        const { detectFaces } = await import('@/lib/vision/faceDetection');
         const detections = await detectFaces(canvas);
 
         const detectedFaces: DetectedFace[] = await Promise.all(

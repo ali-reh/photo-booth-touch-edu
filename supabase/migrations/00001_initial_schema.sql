@@ -89,6 +89,10 @@ $$;
 -- ==============================================================================
 -- 5. REALTIME & STORAGE POLICIES
 -- ==============================================================================
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('event-photos', 'event-photos', true)
+ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
+
 ALTER PUBLICATION supabase_realtime ADD TABLE photos;
 ALTER PUBLICATION supabase_realtime ADD TABLE visitors;
 ALTER PUBLICATION supabase_realtime ADD TABLE photo_visitors;
@@ -100,3 +104,24 @@ WITH CHECK (bucket_id = 'event-photos');
 CREATE POLICY "Allow Public Photo Viewing" 
 ON storage.objects FOR SELECT 
 USING (bucket_id = 'event-photos');
+
+CREATE POLICY "Allow Kiosk Photo Creation"
+ON photos FOR INSERT
+WITH CHECK (true);
+
+CREATE POLICY "Allow Kiosk Photo Viewing"
+ON photos FOR SELECT
+USING (true);
+
+CREATE POLICY "Allow Kiosk Visitor Creation"
+ON visitors FOR INSERT
+WITH CHECK (true);
+
+CREATE POLICY "Allow Kiosk Visitor Updates"
+ON visitors FOR UPDATE
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Allow Kiosk Photo Visitor Links"
+ON photo_visitors FOR INSERT
+WITH CHECK (true);
