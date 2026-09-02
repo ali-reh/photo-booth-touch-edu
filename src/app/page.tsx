@@ -80,6 +80,28 @@ export default function Home() {
     setIsVisitorFormOpen(false);
   }
 
+  function continueWithoutTagging() {
+    dispatch({ type: 'SET_STEP', payload: 'success' });
+  }
+
+  function finishTagging() {
+    dispatch({ type: 'SET_STEP', payload: 'success' });
+  }
+
+  if (session.step === 'success' && session.photoUrl) {
+    return (
+      <main className="kiosk-container bg-[#102a2b] text-[#f8f4e8]">
+        <div className="relative mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center px-5 py-8 text-center sm:px-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.45em] text-[#efc36f]">{EVENT_NAME}</p>
+          <h1 className="mt-4 text-4xl font-black uppercase tracking-[0.12em] text-[#fff9e9]">Your memory is ready</h1>
+          <img src={session.photoUrl} alt="Your captured photo" className="mt-8 max-h-[55vh] w-full rounded-[1.5rem] border-8 border-[#efc36f] object-contain" />
+          <p className="mt-5 text-[#d7e1d7]">Thank you. Your photo has been saved.</p>
+          <Button type="button" size="lg" onClick={() => dispatch({ type: 'RESET' })} className="mt-6 min-w-56 border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">Take another photo</Button>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="kiosk-container bg-[#102a2b] text-[#f8f4e8]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_12%,rgba(236,182,91,0.18),transparent_32%),linear-gradient(145deg,#102a2b_0%,#163d3d_55%,#0b2022_100%)]" />
@@ -105,8 +127,17 @@ export default function Home() {
               {isDetecting && <p className="text-center text-sm text-[#d7e1d7]">Looking for faces...</p>}
               {!isDetecting && !isModelsLoaded && !detectionError && <p className="text-center text-sm text-[#d7e1d7]">Loading face recognition...</p>}
               {detectionError && <p className="text-center text-sm text-[#ffcfbf]">Face recognition is unavailable: {detectionError}</p>}
-              {!isDetecting && !detectionError && isModelsLoaded && faces.length === 0 && <p className="text-center text-sm text-[#d7e1d7]">No faces detected. You can continue without tagging.</p>}
+              {!isDetecting && !detectionError && isModelsLoaded && faces.length === 0 && (
+                <div className="flex flex-col items-center gap-3">
+                  <p className="text-center text-sm text-[#d7e1d7]">No faces detected. You can continue without tagging.</p>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <Button type="button" variant="secondary" onClick={() => session.compositeCanvas && void detect(session.compositeCanvas)}>Try face detection again</Button>
+                    <Button type="button" onClick={continueWithoutTagging} className="border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">Continue without tagging</Button>
+                  </div>
+                </div>
+              )}
               {faces.length > 0 && <FaceSelectorRow faces={faces} selectedIndex={selectedFaceIndex} onSelect={selectFace} onIgnore={ignoreFace} />}
+              {faces.length > 0 && <Button type="button" onClick={finishTagging} className="w-full border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">Continue</Button>}
               <VisitorFormModal isOpen={isVisitorFormOpen} face={faces.find((face) => face.index === selectedFaceIndex) ?? null} onSave={saveVisitor} onClose={() => setIsVisitorFormOpen(false)} />
             </div>
           ) : <Button type="button" size="lg" disabled={!isReady || countdown !== null || isUploading} onClick={beginCapture} className="min-w-56 border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">{isUploading ? 'Uploading photo...' : isReady ? 'Capture photo' : 'Starting camera...'}</Button>}
