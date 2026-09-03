@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { descriptorToArray, cropFace } from '@/lib/vision/embeddings';
+import { cropFace } from '@/lib/vision/embeddings';
+import { getSFaceEmbedding } from '@/lib/vision/sface';
 import { matchVisitorFace } from '@/lib/supabase/services';
 import type { DetectedFace } from '@/types/kiosk';
 
@@ -57,23 +58,31 @@ export function useFaceDetection(): UseFaceDetectionReturn {
         const { detectFaces } = await import('@/lib/vision/faceDetection');
         const detections = await detectFaces(canvas);
 
-        const detectedFaces: DetectedFace[] = detections.map((d, index) => {
+        const detectedFaces: DetectedFace[] = await Promise.all(detections.map(async (d, index) => {
           const box = {
             x: d.detection.box.x,
             y: d.detection.box.y,
             width: d.detection.box.width,
             height: d.detection.box.height,
           };
+          const averagePoint = (points: { x: number; y: number }[]) => ({
+            x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+            y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+          });
 
           return {
             index,
             box,
             thumbnailUrl: cropFace(canvas, box),
-            descriptor: descriptorToArray(d.descriptor),
+            descriptor: await getSFaceEmbedding(canvas, box, [
+              averagePoint(d.landmarks.getLeftEye()),
+              averagePoint(d.landmarks.getRightEye()),
+              averagePoint(d.landmarks.getNose()),
+            ]),
             matchedVisitor: null,
             isIgnored: false,
           };
-        });
+        }));
 
         setFaces(detectedFaces);
         setIsLoading(false);

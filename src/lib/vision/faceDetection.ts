@@ -20,7 +20,6 @@ export async function loadModels(): Promise<void> {
   await Promise.all([
     faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
   ]);
   
   modelsLoaded = true;
@@ -29,7 +28,6 @@ export async function loadModels(): Promise<void> {
 export interface FaceDetectionResult {
   detection: faceapi.FaceDetection;
   landmarks: faceapi.FaceLandmarks68;
-  descriptor: Float32Array;
 }
 
 export async function detectFaces(
@@ -39,8 +37,7 @@ export async function detectFaces(
   
   const detections = await faceapi
     .detectAllFaces(input, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-    .withFaceLandmarks()
-    .withFaceDescriptors();
+    .withFaceLandmarks();
   
   // Sort by x position (left to right)
   return detections
@@ -48,6 +45,5 @@ export async function detectFaces(
     .map((d) => ({
       detection: d.detection,
       landmarks: d.landmarks,
-      descriptor: d.descriptor,
     }));
 }

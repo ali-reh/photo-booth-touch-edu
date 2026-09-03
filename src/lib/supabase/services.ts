@@ -6,7 +6,10 @@ import type {
   MatchedVisitor,
 } from './types';
 
-export const FACE_MATCH_THRESHOLD = 0.90;
+// SFace cosine similarity is not a percentage. This conservative threshold
+// is stricter than the published baseline for a small kiosk visitor database.
+export const FACE_MATCH_THRESHOLD = 0.45;
+export const FACE_MATCH_MARGIN = 0.08;
 
 /**
  * Uploads a photo blob to the 'event-photos' Supabase storage bucket
@@ -59,7 +62,7 @@ export async function matchVisitorFace(
   const { data, error } = await supabase.rpc('match_visitor_face', {
     query_embedding: embeddingString,
     match_threshold: FACE_MATCH_THRESHOLD,
-    match_count: 1,
+    match_count: 2,
   });
 
   if (error) {
@@ -70,7 +73,13 @@ export async function matchVisitorFace(
     return null;
   }
 
-  return data[0].similarity >= FACE_MATCH_THRESHOLD ? data[0] : null;
+  const bestMatch = data[0];
+  const secondBestSimilarity = data[1]?.similarity ?? 0;
+  const isConfidentMatch =
+    bestMatch.similarity >= FACE_MATCH_THRESHOLD &&
+    bestMatch.similarity - secondBestSimilarity >= FACE_MATCH_MARGIN;
+
+  return isConfidentMatch ? bestMatch : null;
 }
 
 /**

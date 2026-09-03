@@ -120,7 +120,7 @@ export function VisitorFormModal({
               </h3>
               <p className="text-xs text-white/60">
                 {face.matchedVisitor
-                  ? `Matched profile (${Math.round((face.matchedVisitor.similarity || 0) * 100)}% similarity)`
+                  ? `Matched profile (${(face.matchedVisitor.similarity || 0).toFixed(3)} SFace score)`
                   : 'New visitor registration'}
               </p>
             </div>
