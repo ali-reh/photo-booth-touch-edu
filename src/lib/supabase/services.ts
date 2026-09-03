@@ -6,6 +6,8 @@ import type {
   MatchedVisitor,
 } from './types';
 
+export const FACE_MATCH_THRESHOLD = 0.92;
+
 /**
  * Uploads a photo blob to the 'event-photos' Supabase storage bucket
  * with a UUID filename and returns its public URL.
@@ -56,7 +58,7 @@ export async function matchVisitorFace(
   const embeddingString = `[${embedding.join(',')}]`;
   const { data, error } = await supabase.rpc('match_visitor_face', {
     query_embedding: embeddingString,
-    match_threshold: 0.85,
+    match_threshold: FACE_MATCH_THRESHOLD,
     match_count: 1,
   });
 
@@ -68,7 +70,7 @@ export async function matchVisitorFace(
     return null;
   }
 
-  return data[0];
+  return data[0].similarity >= FACE_MATCH_THRESHOLD ? data[0] : null;
 }
 
 /**
