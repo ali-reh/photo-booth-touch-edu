@@ -6,7 +6,7 @@ import type {
   MatchedVisitor,
 } from './types';
 
-export const FACE_MATCH_THRESHOLD = 0.92;
+export const FACE_MATCH_THRESHOLD = 0.90;
 
 /**
  * Uploads a photo blob to the 'event-photos' Supabase storage bucket
