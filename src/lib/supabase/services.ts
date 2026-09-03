@@ -75,11 +75,28 @@ export async function matchVisitorFace(
  * Upserts a visitor record into the visitors table using phone as the conflict target.
  */
 export async function upsertVisitor(data: VisitorInsert): Promise<Visitor> {
-  const { data: visitor, error } = await supabase
+  const visitorData = {
+    ...data,
+    face_embedding: Array.isArray(data.face_embedding)
+      ? `[${data.face_embedding.join(',')}]`
+      : data.face_embedding,
+  };
+
+  const { data: existingVisitor, error: lookupError } = await supabase
     .from('visitors')
-    .upsert(data, { onConflict: 'phone' })
-    .select()
-    .single();
+    .select('id')
+    .eq('phone', data.phone)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw lookupError;
+  }
+
+  const visitorQuery = existingVisitor
+    ? supabase.from('visitors').update(visitorData).eq('id', existingVisitor.id)
+    : supabase.from('visitors').insert(visitorData);
+
+  const { data: visitor, error } = await visitorQuery.select().single();
 
   if (error) {
     throw error;

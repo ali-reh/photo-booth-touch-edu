@@ -11,13 +11,14 @@ import { useFaceDetection } from '@/hooks/useFaceDetection';
 import FaceSelectorRow from '@/components/face-tagging/FaceSelectorRow';
 import VisitorFormModal from '@/components/face-tagging/VisitorFormModal';
 import type { VisitorFormData } from '@/types/kiosk';
-import { createPhoto, uploadPhoto } from '@/lib/supabase/services';
+import { createPhoto, linkPhotoVisitor, uploadPhoto, upsertVisitor } from '@/lib/supabase/services';
 
 const EVENT_NAME = 'PHOTO BOOTH';
 
 export default function Home() {
-  const { videoRef, isReady, error, captureImage } = useCamera();
   const { session, dispatch } = useKioskSession();
+  const cameraRestartKey = session.step === 'success' ? 'success' : 'camera';
+  const { videoRef, isReady, error, captureImage } = useCamera({ restartKey: cameraRestartKey });
   const { faces, isLoading: isDetecting, isModelsLoaded, error: detectionError, detect, setFaces } = useFaceDetection();
   const [countdown, setCountdown] = useState<number | null>(null);
   const [selectedFaceIndex, setSelectedFaceIndex] = useState<number | null>(null);
@@ -25,6 +26,7 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [faceDetectionTimedOut, setFaceDetectionTimedOut] = useState(false);
+  const [visitorSaveError, setVisitorSaveError] = useState<string | null>(null);
 
   function beginCapture() {
     if (!isReady || countdown !== null) return;
@@ -75,6 +77,7 @@ export default function Home() {
 
   function selectFace(index: number) {
     setSelectedFaceIndex(index);
+    setVisitorSaveError(null);
     setIsVisitorFormOpen(true);
   }
 
@@ -88,10 +91,59 @@ export default function Home() {
     if (session.compositeCanvas) void detect(session.compositeCanvas);
   }
 
-  function saveVisitor(data: VisitorFormData) {
+  async function saveVisitor(data: VisitorFormData) {
     if (selectedFaceIndex === null) return;
-    dispatch({ type: 'UPDATE_FACE', payload: { index: selectedFaceIndex, face: { matchedVisitor: { id: '', fullName: data.fullName, phone: data.phone, email: data.email, company: data.company, interests: data.interests, rating: data.rating, similarity: 0 } } } });
-    setIsVisitorFormOpen(false);
+
+    const selectedFace = faces.find((face) => face.index === selectedFaceIndex);
+    if (!selectedFace) return;
+
+    try {
+      const visitor = await upsertVisitor({
+        full_name: data.fullName,
+        phone: data.phone,
+        email: data.email || null,
+        company: data.company || null,
+        interests: data.interests,
+        rating: data.rating,
+        face_embedding: selectedFace.descriptor,
+      });
+
+      dispatch({
+        type: 'UPDATE_FACE',
+        payload: {
+          index: selectedFaceIndex,
+          face: {
+            matchedVisitor: {
+              id: visitor.id,
+              fullName: visitor.full_name,
+              phone: visitor.phone,
+              email: visitor.email,
+              company: visitor.company,
+              interests: visitor.interests,
+              rating: visitor.rating,
+              similarity: 1,
+            },
+          },
+        },
+      });
+
+      if (session.photoId) {
+        try {
+          await linkPhotoVisitor(session.photoId, visitor.id, selectedFaceIndex);
+        } catch (linkFailure) {
+          console.warn('Visitor saved, but photo link failed:', linkFailure);
+        }
+      }
+
+      setIsVisitorFormOpen(false);
+    } catch (saveFailure) {
+      const saveMessage = saveFailure instanceof Error
+        ? saveFailure.message
+        : saveFailure && typeof saveFailure === 'object' && 'message' in saveFailure
+          ? String(saveFailure.message)
+          : 'Unable to save visitor information.';
+      setVisitorSaveError(saveMessage);
+    }
   }
 
   function continueWithoutTagging() {
@@ -110,7 +162,7 @@ export default function Home() {
           <h1 className="mt-4 text-4xl font-black uppercase tracking-[0.12em] text-[#fff9e9]">Your memory is ready</h1>
           <img src={session.photoUrl} alt="Your captured photo" className="mt-8 max-h-[55vh] w-full rounded-[1.5rem] border-8 border-[#efc36f] object-contain" style={{ transform: 'rotateY(180deg)' }} />
           <p className="mt-5 text-[#d7e1d7]">Thank you. Your photo has been saved.</p>
-          <Button type="button" size="lg" onClick={() => dispatch({ type: 'RESET' })} className="mt-6 min-w-56 border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">Take another photo</Button>
+          <Button type="button" size="lg" onClick={() => window.location.reload()} className="mt-6 min-w-56 border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">Take another photo</Button>
         </div>
       </main>
     );
@@ -152,6 +204,7 @@ export default function Home() {
               )}
               {faces.length > 0 && <FaceSelectorRow faces={faces} selectedIndex={selectedFaceIndex} onSelect={selectFace} onIgnore={ignoreFace} />}
               {faces.length > 0 && <Button type="button" onClick={finishTagging} className="w-full border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">Continue</Button>}
+              {visitorSaveError && <p className="text-center text-sm text-[#ffcfbf]">{visitorSaveError}</p>}
               <VisitorFormModal isOpen={isVisitorFormOpen} face={faces.find((face) => face.index === selectedFaceIndex) ?? null} onSave={saveVisitor} onClose={() => setIsVisitorFormOpen(false)} />
             </div>
           ) : <Button type="button" size="lg" disabled={!isReady || countdown !== null || isUploading} onClick={beginCapture} className="min-w-56 border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">{isUploading ? 'Uploading photo...' : isReady ? 'Capture photo' : 'Starting camera...'}</Button>}

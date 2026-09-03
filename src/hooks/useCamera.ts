@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 export interface UseCameraOptions {
   facingMode?: 'user' | 'environment';
+  restartKey?: string;
 }
 
 export interface UseCameraReturn {
@@ -14,7 +15,7 @@ export interface UseCameraReturn {
 }
 
 export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
-  const { facingMode = 'user' } = options;
+  const { facingMode = 'user', restartKey = 'camera' } = options;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [isReady, setIsReady] = useState<boolean>(false);
@@ -97,7 +98,7 @@ export function useCamera(options: UseCameraOptions = {}): UseCameraReturn {
       }
       setIsReady(false);
     };
-  }, [facingMode]);
+  }, [facingMode, restartKey]);
 
   const captureImage = useCallback((): HTMLCanvasElement | null => {
     const video = videoRef.current;
