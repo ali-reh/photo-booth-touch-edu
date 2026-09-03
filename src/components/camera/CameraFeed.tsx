@@ -16,8 +16,8 @@ export function CameraFeed({ videoRef, isReady, className = '' }: CameraFeedProp
         autoPlay
         playsInline
         muted
-        className="w-full h-full object-cover mirror -scale-x-100 [transform:scaleX(-1)]"
-        style={{ transform: 'scaleX(-1)' }}
+        className="w-full h-full object-cover"
+        style={{ transform: 'rotateY(180deg)' }}
       />
       {!isReady && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/80 text-white backdrop-blur-sm">
