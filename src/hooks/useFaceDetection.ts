@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { descriptorToArray, cropFace } from '@/lib/vision/embeddings';
 import { matchVisitorFace } from '@/lib/supabase/services';
-import type { DetectedFace, MatchedVisitorInfo } from '@/types/kiosk';
+import type { DetectedFace } from '@/types/kiosk';
 
 export interface UseFaceDetectionReturn {
   faces: DetectedFace[];
@@ -57,51 +57,55 @@ export function useFaceDetection(): UseFaceDetectionReturn {
         const { detectFaces } = await import('@/lib/vision/faceDetection');
         const detections = await detectFaces(canvas);
 
-        const detectedFaces: DetectedFace[] = await Promise.all(
-          detections.map(async (d, index) => {
-            const descriptor = descriptorToArray(d.descriptor);
-            const box = {
-              x: d.detection.box.x,
-              y: d.detection.box.y,
-              width: d.detection.box.width,
-              height: d.detection.box.height,
-            };
-            const thumbnailUrl = cropFace(canvas, box);
+        const detectedFaces: DetectedFace[] = detections.map((d, index) => {
+          const box = {
+            x: d.detection.box.x,
+            y: d.detection.box.y,
+            width: d.detection.box.width,
+            height: d.detection.box.height,
+          };
 
-            let matchedVisitor: MatchedVisitorInfo | null = null;
-            try {
-              const match = await matchVisitorFace(descriptor);
-              if (match) {
-                matchedVisitor = {
-                  id: (match as any).id,
-                  fullName:
-                    (match as any).fullName || (match as any).full_name || '',
-                  phone: (match as any).phone || '',
-                  email: (match as any).email ?? null,
-                  company: (match as any).company ?? null,
-                  interests: (match as any).interests ?? [],
-                  rating: (match as any).rating ?? null,
-                  similarity: (match as any).similarity ?? 0,
-                };
-              }
-            } catch (matchErr) {
-              console.warn(`Face match failed for face ${index}:`, matchErr);
-            }
-
-            return {
-              index,
-              box,
-              thumbnailUrl,
-              descriptor,
-              matchedVisitor,
-              isIgnored: false,
-            };
-          })
-        );
+          return {
+            index,
+            box,
+            thumbnailUrl: cropFace(canvas, box),
+            descriptor: descriptorToArray(d.descriptor),
+            matchedVisitor: null,
+            isIgnored: false,
+          };
+        });
 
         setFaces(detectedFaces);
         setIsLoading(false);
-        return detectedFaces;
+
+        const matchedFaces = await Promise.all(
+          detectedFaces.map(async (face) => {
+            try {
+              const match = await matchVisitorFace(face.descriptor);
+              if (!match) return face;
+
+              return {
+                ...face,
+                matchedVisitor: {
+                  id: match.id,
+                  fullName: match.full_name,
+                  phone: match.phone,
+                  email: match.email,
+                  company: match.company,
+                  interests: match.interests,
+                  rating: match.rating,
+                  similarity: match.similarity,
+                },
+              };
+            } catch (matchErr) {
+              console.warn(`Face match failed for face ${face.index}:`, matchErr);
+              return face;
+            }
+          })
+        );
+
+        setFaces((currentFaces) => currentFaces.map((face) => matchedFaces.find((matchedFace) => matchedFace.index === face.index) ?? face));
+        return matchedFaces;
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : 'Face detection failed.';

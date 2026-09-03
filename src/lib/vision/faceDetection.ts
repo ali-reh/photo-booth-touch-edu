@@ -4,9 +4,19 @@ let modelsLoaded = false;
 
 export async function loadModels(): Promise<void> {
   if (modelsLoaded) return;
-  
+
+  const tensorflow = faceapi.tf as typeof faceapi.tf & {
+    setBackend: (backendName: string) => Promise<boolean>;
+    ready: () => Promise<void>;
+  };
+  const webglInitialized = await tensorflow.setBackend('webgl');
+  if (!webglInitialized) {
+    await tensorflow.setBackend('cpu');
+  }
+  await tensorflow.ready();
+
   const MODEL_URL = '/models';
-  
+
   await Promise.all([
     faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),

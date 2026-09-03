@@ -24,6 +24,7 @@ export default function Home() {
   const [isVisitorFormOpen, setIsVisitorFormOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [faceDetectionTimedOut, setFaceDetectionTimedOut] = useState(false);
 
   function beginCapture() {
     if (!isReady || countdown !== null) return;
@@ -60,10 +61,17 @@ export default function Home() {
   const hasCapturedPhoto = session.step === 'tag' && Boolean(session.photoUrl);
 
   useEffect(() => {
-    if (hasCapturedPhoto && session.compositeCanvas && faces.length === 0 && !isDetecting && isModelsLoaded) {
+    if (hasCapturedPhoto && session.compositeCanvas && faces.length === 0 && !isDetecting && isModelsLoaded && !faceDetectionTimedOut) {
       void detect(session.compositeCanvas);
     }
-  }, [detect, faces.length, hasCapturedPhoto, isDetecting, isModelsLoaded, session.compositeCanvas]);
+  }, [detect, faceDetectionTimedOut, faces.length, hasCapturedPhoto, isDetecting, isModelsLoaded, session.compositeCanvas]);
+
+  useEffect(() => {
+    if (!hasCapturedPhoto || faces.length > 0 || faceDetectionTimedOut) return;
+
+    const timeoutId = window.setTimeout(() => setFaceDetectionTimedOut(true), 10000);
+    return () => window.clearTimeout(timeoutId);
+  }, [faceDetectionTimedOut, faces.length, hasCapturedPhoto]);
 
   function selectFace(index: number) {
     setSelectedFaceIndex(index);
@@ -72,6 +80,12 @@ export default function Home() {
 
   function ignoreFace(index: number) {
     setFaces((currentFaces) => currentFaces.map((face) => face.index === index ? { ...face, isIgnored: true } : face));
+  }
+
+  function rescanFaces() {
+    setFaces([]);
+    setFaceDetectionTimedOut(false);
+    if (session.compositeCanvas) void detect(session.compositeCanvas);
   }
 
   function saveVisitor(data: VisitorFormData) {
@@ -94,7 +108,7 @@ export default function Home() {
         <div className="relative mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center px-5 py-8 text-center sm:px-10">
           <p className="text-xs font-semibold uppercase tracking-[0.45em] text-[#efc36f]">{EVENT_NAME}</p>
           <h1 className="mt-4 text-4xl font-black uppercase tracking-[0.12em] text-[#fff9e9]">Your memory is ready</h1>
-          <img src={session.photoUrl} alt="Your captured photo" className="mt-8 max-h-[55vh] w-full rounded-[1.5rem] border-8 border-[#efc36f] object-contain" />
+          <img src={session.photoUrl} alt="Your captured photo" className="mt-8 max-h-[55vh] w-full rounded-[1.5rem] border-8 border-[#efc36f] object-contain" style={{ transform: 'rotateY(180deg)' }} />
           <p className="mt-5 text-[#d7e1d7]">Thank you. Your photo has been saved.</p>
           <Button type="button" size="lg" onClick={() => dispatch({ type: 'RESET' })} className="mt-6 min-w-56 border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">Take another photo</Button>
         </div>
@@ -113,7 +127,7 @@ export default function Home() {
         </header>
         <section className="relative mt-7 flex min-h-0 w-full max-h-[66vh] flex-1 items-center justify-center rounded-[2rem] border-8 border-[#efc36f] bg-[#08191b] p-2 shadow-[0_24px_80px_rgba(0,0,0,0.35)] sm:mt-8">
           <div className="relative h-full min-h-[280px] w-full overflow-hidden rounded-[1.3rem] border border-white/20">
-            {hasCapturedPhoto ? <img src={session.photoUrl ?? ''} alt="Captured photo" className="h-full w-full object-cover" /> : <CameraFeed videoRef={videoRef} isReady={isReady} />}
+            {hasCapturedPhoto ? <img src={session.photoUrl ?? ''} alt="Captured photo" className="h-full w-full object-cover" style={{ transform: 'rotateY(180deg)' }} /> : <CameraFeed videoRef={videoRef} isReady={isReady} />}
             <FrameOverlay eventName={EVENT_NAME} />
             <CountdownOverlay count={countdown} onComplete={finishCapture} />
           </div>
@@ -124,14 +138,14 @@ export default function Home() {
           {hasCapturedPhoto ? (
             <div className="w-full space-y-3">
               <p className="text-center text-base font-semibold text-[#f8e2a5]">Tag everyone in your photo</p>
-              {isDetecting && <p className="text-center text-sm text-[#d7e1d7]">Looking for faces...</p>}
+              {!faceDetectionTimedOut && !detectionError && (isDetecting || isModelsLoaded) && <p className="text-center text-sm text-[#d7e1d7]">Looking for faces...</p>}
               {!isDetecting && !isModelsLoaded && !detectionError && <p className="text-center text-sm text-[#d7e1d7]">Loading face recognition...</p>}
               {detectionError && <p className="text-center text-sm text-[#ffcfbf]">Face recognition is unavailable: {detectionError}</p>}
-              {!isDetecting && !detectionError && isModelsLoaded && faces.length === 0 && (
+              {!detectionError && faceDetectionTimedOut && faces.length === 0 && (
                 <div className="flex flex-col items-center gap-3">
-                  <p className="text-center text-sm text-[#d7e1d7]">No faces detected. You can continue without tagging.</p>
+                  <p className="text-center text-sm text-[#d7e1d7]">No face found after 10 seconds.</p>
                   <div className="flex flex-wrap justify-center gap-3">
-                    <Button type="button" variant="secondary" onClick={() => session.compositeCanvas && void detect(session.compositeCanvas)}>Try face detection again</Button>
+                    <Button type="button" variant="secondary" onClick={rescanFaces}>Rescan</Button>
                     <Button type="button" onClick={continueWithoutTagging} className="border-2 border-[#fff1c5] bg-[#efc36f] text-[#173638] hover:bg-[#f7d48e]">Continue without tagging</Button>
                   </div>
                 </div>
