@@ -6,6 +6,25 @@ import { getSFaceEmbedding } from '@/lib/vision/sface';
 import { matchVisitorFace } from '@/lib/supabase/services';
 import type { DetectedFace } from '@/types/kiosk';
 
+const MAX_DETECTION_DIMENSION = 1280;
+
+function createDetectionCanvas(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement {
+  const scale = Math.min(1, MAX_DETECTION_DIMENSION / Math.max(sourceCanvas.width, sourceCanvas.height));
+  if (scale === 1) return sourceCanvas;
+
+  const detectionCanvas = document.createElement('canvas');
+  detectionCanvas.width = Math.round(sourceCanvas.width * scale);
+  detectionCanvas.height = Math.round(sourceCanvas.height * scale);
+  detectionCanvas.getContext('2d')?.drawImage(
+    sourceCanvas,
+    0,
+    0,
+    detectionCanvas.width,
+    detectionCanvas.height,
+  );
+  return detectionCanvas;
+}
+
 export interface UseFaceDetectionReturn {
   faces: DetectedFace[];
   isLoading: boolean;
@@ -26,7 +45,14 @@ export function useFaceDetection(): UseFaceDetectionReturn {
 
     async function initModels() {
       try {
-        const { loadModels } = await import('@/lib/vision/faceDetection');
+        const [{ loadModels }, { preloadSFace }] = await Promise.all([
+          import('@/lib/vision/faceDetection'),
+          import('@/lib/vision/sface'),
+        ]);
+        const sfaceLoad = preloadSFace();
+        sfaceLoad.catch((preloadError) => {
+          console.warn('SFace model preload failed:', preloadError);
+        });
         await loadModels();
         if (isMounted) {
           setIsModelsLoaded(true);
@@ -56,7 +82,8 @@ export function useFaceDetection(): UseFaceDetectionReturn {
 
       try {
         const { detectFaces } = await import('@/lib/vision/faceDetection');
-        const detections = await detectFaces(canvas);
+        const detectionCanvas = createDetectionCanvas(canvas);
+        const detections = await detectFaces(detectionCanvas);
 
         const detectedFaces: DetectedFace[] = await Promise.all(detections.map(async (d, index) => {
           const box = {
@@ -73,8 +100,8 @@ export function useFaceDetection(): UseFaceDetectionReturn {
           return {
             index,
             box,
-            thumbnailUrl: cropFace(canvas, box),
-            descriptor: await getSFaceEmbedding(canvas, box, [
+            thumbnailUrl: cropFace(detectionCanvas, box),
+            descriptor: await getSFaceEmbedding(detectionCanvas, box, [
               averagePoint(d.landmarks.getLeftEye()),
               averagePoint(d.landmarks.getRightEye()),
               averagePoint(d.landmarks.getNose()),

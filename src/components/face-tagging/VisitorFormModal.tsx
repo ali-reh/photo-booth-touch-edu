@@ -1,6 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, type FormEvent } from 'react';
+import {
+  AsYouType,
+  getCountries,
+  getCountryCallingCode,
+  parsePhoneNumberFromString,
+  type CountryCode,
+} from 'libphonenumber-js';
 import type { DetectedFace, VisitorFormData } from '@/types/kiosk';
 import { DEFAULT_INTERESTS } from '@/types/kiosk';
 import Input from '@/components/ui/Input';
@@ -24,6 +31,20 @@ const emptyFormData: VisitorFormData = {
   rating: 5,
 };
 
+const DEFAULT_COUNTRY: CountryCode = 'LB';
+const countries = getCountries();
+const countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
+
+function formatPhone(value: string, country: CountryCode): string {
+  return new AsYouType(country).input(value.replace(/[^\d+]/g, ''));
+}
+
+function capitalizeName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/(^|\s)(\S)/g, (_, whitespace: string, character: string) => `${whitespace}${character.toUpperCase()}`);
+}
+
 export function VisitorFormModal({
   isOpen,
   face,
@@ -31,21 +52,28 @@ export function VisitorFormModal({
   onClose,
 }: VisitorFormModalProps) {
   const [formData, setFormData] = useState<VisitorFormData>(emptyFormData);
+  const [selectedCountry, setSelectedCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
+  const [phoneError, setPhoneError] = useState<string | undefined>();
 
   useEffect(() => {
     if (face) {
       if (face.matchedVisitor) {
+        const matchedPhone = parsePhoneNumberFromString(face.matchedVisitor.phone);
+        const country = matchedPhone?.country ?? DEFAULT_COUNTRY;
         setFormData({
           fullName: face.matchedVisitor.fullName || '',
-          phone: face.matchedVisitor.phone || '',
+          phone: matchedPhone ? formatPhone(matchedPhone.nationalNumber, country) : face.matchedVisitor.phone || '',
           email: face.matchedVisitor.email || '',
           company: face.matchedVisitor.company || '',
           interests: face.matchedVisitor.interests || [],
           rating: face.matchedVisitor.rating ?? 5,
         });
+        setSelectedCountry(country);
       } else {
         setFormData(emptyFormData);
+        setSelectedCountry(DEFAULT_COUNTRY);
       }
+      setPhoneError(undefined);
     }
   }, [face]);
 
@@ -74,7 +102,13 @@ export function VisitorFormModal({
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onSave(formData);
+    const phoneNumber = parsePhoneNumberFromString(formData.phone, selectedCountry);
+    if (!phoneNumber || !phoneNumber.isValid()) {
+      setPhoneError('Enter a valid phone number for the selected country.');
+      return;
+    }
+
+    onSave({ ...formData, phone: phoneNumber.number });
   };
 
   return (
@@ -157,27 +191,51 @@ export function VisitorFormModal({
             onChange={(e: React.ChangeEvent<HTMLInputElement> | string) =>
               setFormData((prev) => ({
                 ...prev,
-                fullName: typeof e === 'string' ? e : e.target.value,
+                fullName: capitalizeName(typeof e === 'string' ? e : e.target.value),
               }))
             }
             placeholder="Enter full name"
             required
           />
 
-          <Input
-            label="Phone"
-            type="tel"
-            name="phone"
-            value={formData.phone}
-            onChange={(e: React.ChangeEvent<HTMLInputElement> | string) =>
-              setFormData((prev) => ({
-                ...prev,
-                phone: typeof e === 'string' ? e : e.target.value,
-              }))
-            }
-            placeholder="Enter phone number"
-            required
-          />
+          <div className="w-full flex flex-col">
+            <label htmlFor="phone" className="text-sm text-white/80 font-medium mb-1">
+              Phone
+            </label>
+            <div className="flex gap-2">
+              <select
+                aria-label="Phone country"
+                value={selectedCountry}
+                onChange={(e) => {
+                  const country = e.target.value as CountryCode;
+                  setSelectedCountry(country);
+                  setPhoneError(undefined);
+                  setFormData((prev) => ({ ...prev, phone: formatPhone(prev.phone, country) }));
+                }}
+                className="w-[9.5rem] shrink-0 bg-gray-800 border border-white/20 rounded-xl px-2 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {countries.map((country) => (
+                  <option key={country} value={country}>
+                    {countryNames.of(country) ?? country} (+{getCountryCallingCode(country)})
+                  </option>
+                ))}
+              </select>
+              <input
+                id="phone"
+                type="tel"
+                name="phone"
+                value={formData.phone}
+                onChange={(e) => {
+                  setPhoneError(undefined);
+                  setFormData((prev) => ({ ...prev, phone: formatPhone(e.target.value, selectedCountry) }));
+                }}
+                placeholder="Enter phone number"
+                required
+                className="w-full min-w-0 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              />
+            </div>
+            {phoneError && <p className="text-sm text-red-400 mt-1">{phoneError}</p>}
+          </div>
 
           <Input
             label="Email"

@@ -8,8 +8,13 @@ let sessionPromise: Promise<ort.InferenceSession> | null = null;
 function getSession(): Promise<ort.InferenceSession> {
   sessionPromise ??= ort.InferenceSession.create(MODEL_URL, {
     executionProviders: ['webgl', 'wasm'],
+    logSeverityLevel: 3,
   });
   return sessionPromise;
+}
+
+export async function preloadSFace(): Promise<void> {
+  await getSession();
 }
 
 export async function getSFaceEmbedding(

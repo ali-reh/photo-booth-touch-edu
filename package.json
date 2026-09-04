@@ -11,6 +11,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.113.0",
     "@vladmandic/face-api": "^1.7.15",
+    "libphonenumber-js": "^1.13.12",
     "next": "16.3.4",
     "onnxruntime-web": "^1.29.0",
     "qrcode.react": "^4.2.0",
