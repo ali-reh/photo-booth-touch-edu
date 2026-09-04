@@ -105,6 +105,8 @@ export function useFaceDetection(): UseFaceDetectionReturn {
               averagePoint(d.landmarks.getLeftEye()),
               averagePoint(d.landmarks.getRightEye()),
               averagePoint(d.landmarks.getNose()),
+              d.landmarks.getMouth()[0],  // left mouth corner
+              d.landmarks.getMouth()[6],  // right mouth corner
             ]),
             matchedVisitor: null,
             isIgnored: false,

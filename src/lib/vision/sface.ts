@@ -17,10 +17,60 @@ export async function preloadSFace(): Promise<void> {
   await getSession();
 }
 
+type Point = { x: number; y: number };
+
+/**
+ * Least-squares fit of a 2D similarity transform (rotation + uniform scale +
+ * translation only — no shear, no reflection) mapping `source` points onto
+ * `target` points. Unlike an exact-fit transform, this averages out landmark
+ * jitter across all N correspondences instead of baking it into the crop.
+ */
+function fitSimilarityTransform(
+  source: Point[],
+  target: Point[]
+): { a: number; b: number; tx: number; ty: number } | null {
+  const n = source.length;
+  const meanSrc = source.reduce((acc, p) => ({ x: acc.x + p.x / n, y: acc.y + p.y / n }), { x: 0, y: 0 });
+  const meanDst = target.reduce((acc, p) => ({ x: acc.x + p.x / n, y: acc.y + p.y / n }), { x: 0, y: 0 });
+
+  let sxx = 0; // sum(xc * x'c + yc * y'c)
+  let sxy = 0; // sum(xc * y'c - yc * x'c)
+  let denom = 0; // sum(xc^2 + yc^2)
+
+  for (let i = 0; i < n; i += 1) {
+    const xc = source[i].x - meanSrc.x;
+    const yc = source[i].y - meanSrc.y;
+    const xpc = target[i].x - meanDst.x;
+    const ypc = target[i].y - meanDst.y;
+
+    sxx += xc * xpc + yc * ypc;
+    sxy += xc * ypc - yc * xpc;
+    denom += xc * xc + yc * yc;
+  }
+
+  if (denom < 1e-6) return null; // degenerate: landmarks collapsed to ~a point
+
+  const a = sxx / denom;
+  const b = sxy / denom;
+  const tx = meanDst.x - a * meanSrc.x + b * meanSrc.y;
+  const ty = meanDst.y - b * meanSrc.x - a * meanSrc.y;
+
+  return { a, b, tx, ty };
+}
+
+// Standard OpenCV SFace 5-point reference template for a 112x112 crop.
+const TARGET_POINTS: Point[] = [
+  { x: 38.2946, y: 51.6963 }, // right eye
+  { x: 73.5318, y: 51.5014 }, // left eye
+  { x: 56.0252, y: 71.7366 }, // nose tip
+  { x: 41.5493, y: 92.3655 }, // right mouth corner
+  { x: 70.7299, y: 92.2041 }, // left mouth corner
+];
+
 export async function getSFaceEmbedding(
   canvas: HTMLCanvasElement,
   box: { x: number; y: number; width: number; height: number },
-  landmarks: { x: number; y: number }[]
+  landmarks: Point[] // [leftEye, rightEye, nose, mouthLeft, mouthRight] — 5 points
 ): Promise<number[]> {
   const faceCanvas = document.createElement('canvas');
   faceCanvas.width = INPUT_SIZE;
@@ -28,38 +78,11 @@ export async function getSFaceEmbedding(
   const context = faceCanvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('Unable to prepare face image.');
 
-  const targetPoints = [
-    { x: 38.2946, y: 51.6963 },
-    { x: 73.5318, y: 51.5014 },
-    { x: 56.0252, y: 71.7366 },
-  ];
-  const sourcePoints = [landmarks[0], landmarks[1], landmarks[2]];
-  const determinant = sourcePoints[0].x * (sourcePoints[1].y - sourcePoints[2].y)
-    + sourcePoints[1].x * (sourcePoints[2].y - sourcePoints[0].y)
-    + sourcePoints[2].x * (sourcePoints[0].y - sourcePoints[1].y);
+  const transform = fitSimilarityTransform(landmarks, TARGET_POINTS);
 
-  if (Math.abs(determinant) > 0.001) {
-    const inverse = [
-      sourcePoints[1].y - sourcePoints[2].y,
-      sourcePoints[2].x - sourcePoints[1].x,
-      sourcePoints[0].x * sourcePoints[2].y - sourcePoints[2].x * sourcePoints[0].y,
-      sourcePoints[2].y - sourcePoints[0].y,
-      sourcePoints[0].x - sourcePoints[2].x,
-      sourcePoints[2].x * sourcePoints[0].y - sourcePoints[0].x * sourcePoints[2].y,
-      sourcePoints[0].y - sourcePoints[1].y,
-      sourcePoints[1].x - sourcePoints[0].x,
-      sourcePoints[0].x * sourcePoints[1].y - sourcePoints[1].x * sourcePoints[0].y,
-    ].map((value) => value / determinant);
-    const affine = [0, 0, 0, 0, 0, 0];
-    for (let row = 0; row < 3; row += 1) {
-      affine[row * 2] = inverse[row * 3] * targetPoints[0].x
-        + inverse[row * 3 + 1] * targetPoints[1].x
-        + inverse[row * 3 + 2] * targetPoints[2].x;
-      affine[row * 2 + 1] = inverse[row * 3] * targetPoints[0].y
-        + inverse[row * 3 + 1] * targetPoints[1].y
-        + inverse[row * 3 + 2] * targetPoints[2].y;
-    }
-    context.setTransform(affine[0], affine[1], affine[2], affine[3], affine[4], affine[5]);
+  if (transform) {
+    const { a, b, tx, ty } = transform;
+    context.setTransform(a, b, -b, a, tx, ty);
     context.drawImage(canvas, 0, 0);
     context.setTransform(1, 0, 0, 1, 0, 0);
   } else {
